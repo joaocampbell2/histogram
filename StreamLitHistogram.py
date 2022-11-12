@@ -72,50 +72,71 @@ def connectBd():
 
 
 
-def removerNA(coluna):
-    x = df.dropna(subset= coluna)
-    x = x[2]
-    x=x.dropna()
-    x = x.apply(lambda x: [obj['probability'] for obj in x if obj['class'] == 1 ])
+def removerNA(df,coluna):
+    #drop nan columns
 
-    a = [round(j * 2, 1) / 2 for i in x for j in i]
+    df = df.dropna(subset=coluna)
+
+    # detections = detections column
+
+    detections = df[2]
+
+    detections = detections.dropna()
+    print(detections)
+    # probs = all probabilities from class 1
+
+    probs = detections.apply(lambda x: [obj['probability'] for obj in x if obj['class'] == 1 ])
+
+    # rounded = probs rounded
+
+    rounded = [round(j * 2, 1) / 2 for i in probs for j in i]
+
+    #filter by min and max
 
     try:
-        print(a[0])
-        a = filter(lambda x: max >= x >= min, a)
+        print(rounded[0])
+        rounded = list(filter(lambda x: max >= x >= min, rounded))
     except:
-        a = None
+        rounded = None
 
-    return a,x
+    return rounded,probs
 
 # ALERTAS DISPACHADOS
 
-def getData(va,min):
+def getData(df,min):
 
     df_dispatched = df.dropna(subset=0)
 
-    dispatched, x = removerNA(df,0)
+    dispatched,x = removerNA(df,0)
+
+
 
     # ALERTAS IGNORADOS
 
     ignored = removerNA(df,1)[0]
+    if ignored == []:
+        ignored = None
 
 
     # FEEDBACKS
 
+    frame_id = []
+
+
+
     try:
+
         keys = list(x.keys())
 
-        df_feedbacks = df_dispatched.dropna(subset="evaluation_positive")
-        df_feedbacks = df_feedbacks["evaluation_positive"]
+
+        df_feedbacks = df_dispatched.dropna(subset=3)
+        df_feedbacks = df_feedbacks[3]
 
         positive_feedback = []
         negative_feedback = []
 
 
         cont = 0
-        frame_id = []
-
 
         for i in x:
             row = keys[cont]
@@ -136,18 +157,34 @@ def getData(va,min):
 
         #ARREDONDA OS VALORES
 
+
         positive_feedback= [round(i, 2) for i in positive_feedback]
         negative_feedback= [round(i, 2) for i in negative_feedback]
+        if positive_feedback == []:
+            positive_feedback = None
 
-
+        if negative_feedback == []:
+            negative_feedback = None
 
     # RETIRAR FRAME ID DOS FEEDBACKS POSITIVOS
 
-        st.write("Frame id com feedback positivo: ",frame_id)
+        if frame_id != []:
+            st.write("FRAME IDS COM FEEDBACK POSITIVO: ",frame_id)
 
     except:
+
         negative_feedback = None
         positive_feedback = None
+
+
+
+    print('results')
+
+    print('negativo =', negative_feedback)
+    print('positivo =', positive_feedback)
+    print('ignorado = ', ignored)
+
+    print('dispachado =', dispatched)
 
 
     return negative_feedback, positive_feedback, ignored, dispatched
@@ -158,16 +195,53 @@ def getData(va,min):
 def createPlot(negative_feedback,positive_feedback,ignored,dispatched):
     fig = plt.figure(figsize=(9, 7))
 
-    x = sns.histplot(data=(negative_feedback, positive_feedback, ignored, dispatched), multiple="layer",
+    x = sns.histplot(data=(negative_feedback , positive_feedback, ignored, dispatched), multiple="layer",
                      element="poly", palette="Set1", bins=9, binrange=(min, min + 0.4),
                      )
 
     plt.title("ALARMES")
-    plt.legend(labels=("Alarmes Despachados", "Alarmes Ignorados", "FeedBacks Positivos", "FeedBacks Negativos"))
+
+
+
+
+    plt.legend(labels=(
+    #label 1
+    "Alarmes Despachados" if dispatched != None
+
+    else
+        "Alarmes Ignorados" if ignored != None
+
+        else
+    "Feedbacks Positivos" if positive_feedback != None
+
+            else
+                "Feedbacks Negativos",
+
+    #label2
+
+    "Alarmes Ignorados" if ignored != None and dispatched != None
+    else
+    "Feedbacks Positivos" if positive_feedback != None
+
+        else
+            "Feedbacks Negativos",
+
+
+    #label3
+    "Feedbacks Positivos" if positive_feedback != None and ignored != None
+
+    else
+        "Feedbacks Negativos",
+
+    #label4
+    "Feedbacks Negatvos"))
+
     st.pyplot(fig)
 
 
 
+
+#Streamlit Widgets
 
 camera_id = st.text_input("Insira Câmera ID: ")
 
@@ -180,39 +254,40 @@ time_2 = str(st.time_input("Insira horário: ", key='2', value=datetime.time(0,0
 
 
 
-
-
-
-
-
 if camera_id != None:
+
     if st.button('Enviar'):
+
+# JOIN DATE AND TIMES
+
         date_1 = (date_1 + " " + time_1)
         date_2 = (date_2 + " " + time_2)
-
-        row = connectBd()
-        if row!= None:
-
-
-            df = pd.DataFrame(row)
-
-            try:
-                x, y, w, z = getData(df, min)
-                createPlot(x, y, w, z)
-            except KeyError:
-                st.write("Erro!!! Não existem alarmes")
-
+        if date_2 == date_1:
+            st.write("Erro!!! Datas iguais")
         else:
 
-             st.write("Erro!!! Câmera inválida")
 
+        #CONNECT TO DB and run query
 
+            row = connectDb()
 
+    #check if query returns
 
+            if row!= None:
 
+                # query into pandas df
+                df = pd.DataFrame(row)
 
+    #get data form df and create plot
 
+                try:
+                    x, y, w, z = getData(df, min)
 
+                    createPlot(x, y, w, z)
 
+                except KeyError:
+                    st.write("Erro!!! Não existem alarmes")
 
+            else:
 
+                 st.write("Erro!!! Câmera inválida")
